@@ -69,16 +69,16 @@ else
   echo "cert-manager já instalado."
 fi
 
-# 7. Instala Rancher via Helm
-if ! helm list -n "$NAMESPACE" | grep -q rancher; then
+# 7. Instala Rancher via Helm (idempotente)
+if helm list -n "$NAMESPACE" | grep -q rancher; then
+  echo "Rancher já instalado no namespace $NAMESPACE. Pulando instalação."
+else
   echo "Instalando Rancher..."
   helm install rancher rancher-latest/rancher \
     --namespace "$NAMESPACE" \
     --set hostname="$DOMAIN" \
     --set replicas=1 \
-    --set ingress.tls.source=auto || echo "helm install rancher failed, continuing..."
-else
-  echo "Rancher já instalado."
+    --set ingress.tls.source=auto || echo "helm install rancher falhou, continuando..."
 fi
 
 # 8. Aguarda Rancher ficar pronto
@@ -109,32 +109,29 @@ echo "Senha bootstrap inicial do Rancher:"
 kubectl get secret --namespace "$NAMESPACE" bootstrap-secret -o go-template='{{.data.bootstrapPassword|base64decode}}' 2>/dev/null || echo "kubectl get secret failed, Rancher may not be ready yet."
 
 
-# 7. Instala Rancher via Helm
-if ! helm list -n "$NAMESPACE" | grep -q rancher; then
-  echo "Instalando Rancher..."
-  helm install rancher rancher-latest/rancher \
-    --namespace "$NAMESPACE" \
-    --set hostname="$DOMAIN" \
-    --set replicas=1 \
-    --set ingress.tls.source=auto
-# 7. Instala Rancher via Helm
-# (Removido bloco duplicado)
-  MINIKUBE_IP=$(minikube ip)
+# Descobre IP do Minikube (se não encontrado usa fallback)
+if [ -z "${MINIKUBE_IP:-}" ]; then
+  if $USE_SG; then
+    MINIKUBE_IP=$(sg docker -c "minikube ip" 2>/dev/null || true)
+  else
+    MINIKUBE_IP=$(minikube ip 2>/dev/null || true)
+  fi
+  MINIKUBE_IP=${MINIKUBE_IP:-192.168.49.2}
 fi
 
-# 10. Adiciona domínio ao /etc/hosts
-if ! grep -q "$DOMAIN" /etc/hosts; then
+# 10. Adiciona domínio ao /etc/hosts (idempotente)
+if ! grep -q "^$MINIKUBE_IP[[:space:]]\+$DOMAIN\b" /etc/hosts; then
   echo "Adicionando $DOMAIN ao /etc/hosts com IP $MINIKUBE_IP (requer sudo)..."
-  echo "$MINIKUBE_IP $DOMAIN" | sudo tee -a /etc/hosts
+  echo "$MINIKUBE_IP $DOMAIN" | sudo tee -a /etc/hosts || echo "Falha ao adicionar /etc/hosts, continuando..."
 else
-  echo "$DOMAIN já está em /etc/hosts."
+  echo "$DOMAIN já está em /etc/hosts com IP $MINIKUBE_IP."
 fi
 
-# 11. Valida acesso
-kubectl get ingress -n "$NAMESPACE"
+# 11. Valida acesso (tolerante)
+kubectl get ingress -n "$NAMESPACE" || echo "kubectl get ingress failed, Rancher ingress may not be ready yet"
 echo "Acesse https://$DOMAIN para finalizar configuração do Rancher."
 
-# 12. Exibe senha bootstrap
+# 12. Exibe senha bootstrap (se disponível)
 echo ""
-echo "Senha bootstrap inicial do Rancher:"
-kubectl get secret --namespace "$NAMESPACE" bootstrap-secret -o go-template='{{.data.bootstrapPassword|base64decode}}{{ "\n" }}'
+echo "Senha bootstrap inicial do Rancher (se disponível):"
+kubectl get secret --namespace "$NAMESPACE" bootstrap-secret -o go-template='{{.data.bootstrapPassword|base64decode}}{{ "\n" }}' 2>/dev/null || echo "Bootstrap secret não encontrado ainda. Aguarde alguns minutos e rode: kubectl get secret -n $NAMESPACE bootstrap-secret -o go-template='{{.data.bootstrapPassword|base64decode}}{{ \"\\n\" }}'"

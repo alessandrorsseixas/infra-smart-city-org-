@@ -18,26 +18,20 @@ fi
 echo "Deletando Minikube existente (se houver)..."
 minikube delete --all || true
 
-# Verifica permissões do Docker
-USE_NEWGRP=false
+# Verifica permissões do Docker e re-exec se necessário para ativar grupo docker
 if ! docker version &> /dev/null; then
-  USE_NEWGRP=true
-  echo "Permissões do Docker não disponíveis. Reiniciando script com newgrp para ativar grupo docker..."
+  echo "Permissões do Docker não disponíveis para o usuário atual. Re-executando com newgrp docker para ativar grupo..."
   exec newgrp docker "$0" "$@"
 fi
 
-# 1. Instala pré-requisitos
-./install-prereqs.sh "$@"
-
-# 2. Instala/configura novo Minikube
+# 3. Instala/configura novo Minikube
 ./install-minikube.sh "$@"
 
-# 4. Instala, valida e configura o certificado TLS
-./install-cert.sh "$1" default
+# 4. Instala, valida e configura o certificado TLS (passa o domínio como nome do certificado)
+DOMAIN=${1:-rancher.local}
+./install-cert.sh "$DOMAIN" default
 
 # 5. Instala e configura o Rancher
-./install-rancher-minikube.sh "$1" cattle-system
+./install-rancher-minikube.sh "$DOMAIN" cattle-system
 
-echo "\nAmbiente Minikube com Rancher está pronto!\nAcesse: https://$1"
-
-echo "\nAmbiente Minikube com Rancher está pronto!\nAcesse: https://$1"
+echo "\nAmbiente Minikube com Rancher está pronto!\nAcesse: https://$DOMAIN"

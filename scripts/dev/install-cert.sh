@@ -9,19 +9,38 @@ NAMESPACE=${2:-default}
 KEY_FILE="${CERT_NAME}.key"
 CRT_FILE="${CERT_NAME}.crt"
 
-# 1. Gerar certificado autoassinado
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout "$KEY_FILE" -out "$CRT_FILE" \
-  -subj "/CN=${CERT_NAME}.local"
-echo "Certificado autoassinado gerado: $CRT_FILE"
+# Cria namespace se não existir (tolerante)
+if ! kubectl get namespace "$NAMESPACE" >/dev/null 2>&1; then
+  echo "Namespace $NAMESPACE não existe. Criando..."
+  kubectl create namespace "$NAMESPACE" || echo "Falha ao criar namespace $NAMESPACE, continuando..."
+fi
 
-# 2. Criar secret TLS no Kubernetes
-kubectl create secret tls "$CERT_NAME" \
-  --key "$KEY_FILE" --cert "$CRT_FILE" \
-  --namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || echo "kubectl create secret failed, continuing..."
+# 1. Gerar certificado autoassinado somente se não existir
+if [ -f "$KEY_FILE" ] || [ -f "$CRT_FILE" ]; then
+  echo "Arquivo de certificado ($CRT_FILE) ou chave ($KEY_FILE) já existe. Pulando geração."
+else
+  echo "Gerando certificado autoassinado: $CRT_FILE"
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout "$KEY_FILE" -out "$CRT_FILE" \
+    -subj "/CN=${CERT_NAME}.local"
+  echo "Certificado autoassinado gerado: $CRT_FILE"
+fi
+
+# 2. Criar secret TLS no Kubernetes somente se não existir ou atualizar
+if kubectl get secret "$CERT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
+  echo "Secret TLS $CERT_NAME já existe no namespace $NAMESPACE. Atualizando com arquivos locais..."
+  kubectl create secret tls "$CERT_NAME" --key "$KEY_FILE" --cert "$CRT_FILE" --namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || echo "Falha ao atualizar secret TLS, continuando..."
+else
+  echo "Criando secret TLS $CERT_NAME no namespace $NAMESPACE..."
+  kubectl create secret tls "$CERT_NAME" --key "$KEY_FILE" --cert "$CRT_FILE" --namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || echo "Falha ao criar secret TLS, continuando..."
+fi
 
 # 3. Validar secret
-kubectl get secret "$CERT_NAME" --namespace "$NAMESPACE" || echo "kubectl get secret failed, continuing..."
+if kubectl get secret "$CERT_NAME" --namespace "$NAMESPACE" >/dev/null 2>&1; then
+  echo "Secret $CERT_NAME criado/atualizado com sucesso no namespace $NAMESPACE."
+else
+  echo "Secret $CERT_NAME não encontrado. Houve um problema ao criar/atualizar o secret."
+fi
 
 # 4. Exemplo de configuração de Ingress (opcional)
 cat <<EOF

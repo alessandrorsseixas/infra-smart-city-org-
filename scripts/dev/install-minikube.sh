@@ -3,9 +3,9 @@
 # Uso: bash install-minikube.sh
 
 set -euo pipefail
-kubectl delete pod test-minikube-pod --ignore-not-found=true
-# Instala e configura o Minikube para Kubernetes
-# Uso: bash install-minikube.sh
+
+# install-minikube.sh: idempotent Minikube install and validation
+# Usage: bash install-minikube.sh
 for cmd in docker kubectl minikube helm; do
   if ! command -v $cmd &> /dev/null; then
     echo "[ERRO] Pré-requisito '$cmd' não encontrado. Execute 'install-prereqs.sh' antes."
@@ -59,10 +59,33 @@ fi
 kubectl cluster-info || echo "kubectl cluster-info failed, continuing..."
 kubectl get nodes || echo "kubectl get nodes failed, continuing..."
 
-# 4. Testa criação de pod simples
-kubectl run test-minikube-pod --image=nginx --restart=Never --port=80 --dry-run=client -o yaml | kubectl apply -f -
-kubectl wait --for=condition=Ready pod/test-minikube-pod --timeout=60s || echo "Test pod may not be ready yet, continuing..."
-kubectl get pods | grep test-minikube-pod || echo "Test pod not found"
-kubectl delete pod test-minikube-pod --ignore-not-found=true
+# 4. Testa criação de pod simples em namespace de teste para evitar RBAC no default
+TEST_NS="minikube-test"
+if kubectl get namespace "$TEST_NS" >/dev/null 2>&1; then
+  echo "Namespace $TEST_NS já existe."
+else
+  kubectl create namespace "$TEST_NS" || echo "Falha ao criar namespace $TEST_NS, continuando..."
+fi
+
+cat <<EOF | kubectl apply -n "$TEST_NS" -f - || echo "Falha ao criar test pod manifest, continuando..."
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-minikube-pod
+spec:
+  containers:
+  - name: nginx
+    image: nginx:stable
+    ports:
+    - containerPort: 80
+  restartPolicy: Never
+EOF
+
+kubectl wait -n "$TEST_NS" --for=condition=Ready pod/test-minikube-pod --timeout=60s || echo "Test pod may not be ready yet, continuing..."
+kubectl get pods -n "$TEST_NS" | grep test-minikube-pod || echo "Test pod not found in $TEST_NS"
+
+# Limpa o pod e namespace de teste de forma segura
+kubectl delete pod test-minikube-pod -n "$TEST_NS" --ignore-not-found=true || true
+kubectl delete namespace "$TEST_NS" --ignore-not-found=true || true
 
 echo "Minikube instalado, validado e pronto para uso!"
