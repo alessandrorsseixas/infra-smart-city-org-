@@ -1,0 +1,64 @@
+---
+- name: Start minikube (if not running)
+  command: minikube status --format '{{"ok"}}'
+  register: minikube_status
+  failed_when: false
+
+- name: Start minikube with docker driver
+  command: minikube start --driver=docker --memory=4096 --cpus=2 --kubernetes-version=v1.31.0
+  when: minikube_status.rc != 0
+
+- name: Ensure kubectl context points to minikube
+  command: minikube update-context || true
+  changed_when: false
+
+- name: Use minikube context
+  command: kubectl config use-context minikube || true
+  changed_when: false
+
+- name: Create minikube-test namespace
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: minikube-test
+
+- name: Create a test pod in minikube-test
+  k8s:
+    state: present
+    namespace: minikube-test
+    definition:
+      apiVersion: v1
+      kind: Pod
+      metadata:
+        name: test-minikube-pod
+      spec:
+        containers:
+          - name: nginx
+            image: nginx:stable
+            ports:
+              - containerPort: 80
+        restartPolicy: Never
+  register: pod_apply
+  failed_when: false
+
+- name: Wait for pod ready
+  k8s_info:
+    kind: Pod
+    namespace: minikube-test
+    name: test-minikube-pod
+  register: pod_info
+  until: pod_info.resources | length > 0 and pod_info.resources[0].status.phase == 'Running'
+  retries: 6
+  delay: 10
+  failed_when: false
+
+- name: Delete test pod and namespace
+  k8s:
+    state: absent
+    namespace: minikube-test
+    kind: Namespace
+    name: minikube-test
+  ignore_errors: yes

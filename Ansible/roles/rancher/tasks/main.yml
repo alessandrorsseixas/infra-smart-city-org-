@@ -1,0 +1,53 @@
+---
+- name: Add Rancher Helm repo
+  command: helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
+  changed_when: false
+
+- name: Update helm repo
+  command: helm repo update
+  changed_when: false
+
+- name: Create cattle-system namespace
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cattle-system
+
+- name: Install Rancher chart (idempotent)
+  community.kubernetes.helm:
+    name: rancher
+    chart_ref: rancher-latest/rancher
+    release_namespace: cattle-system
+    values:
+      hostname: "{{ rancher_domain }}"
+      ingress:
+        tls:
+          source: auto
+    wait: yes
+  register: rancher_install
+  failed_when: false
+
+- name: Ensure /etc/hosts entry for rancher domain
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ lookup('pipe','minikube ip') }} {{ rancher_domain }}"
+    state: present
+    create: yes
+
+- name: Wait for Rancher deployment to be ready
+  k8s_info:
+    kind: Deployment
+    namespace: cattle-system
+    name: rancher
+  register: rancher_deploy
+  until: rancher_deploy.resources | length > 0 and rancher_deploy.resources[0].status.availableReplicas | default(0) >= 1
+  retries: 30
+  delay: 10
+  failed_when: false
+
+- name: Print bootstrap secret command
+  debug:
+    msg: "To get the Rancher bootstrap password run: kubectl get secret -n cattle-system bootstrap-secret -o go-template='{{ '{{' }}.data.bootstrapPassword|base64decode{{ '}}' }}'"

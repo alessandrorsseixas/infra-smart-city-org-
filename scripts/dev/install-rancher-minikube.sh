@@ -57,6 +57,13 @@ if ! helm repo list | grep -q rancher-latest; then
 fi
 helm repo update
 
+# 4.5. Verifica se ingress controller está pronto (pré-requisito crítico)
+echo "Verificando se ingress controller está pronto..."
+if ! kubectl get pods -n ingress-nginx 2>/dev/null | grep -q 'ingress-nginx-controller.*Running'; then
+  echo "AVISO: Ingress controller não está rodando. Rancher pode não ser acessível via browser."
+  echo "Execute: minikube addons enable ingress && kubectl wait --namespace ingress-nginx --for=condition=Ready pod --selector=app.kubernetes.io/component=controller --timeout=300s"
+fi
+
 # 5. Cria namespace se não existir
 kubectl get namespace "$NAMESPACE" &> /dev/null || kubectl create namespace "$NAMESPACE" || echo "kubectl create namespace failed, continuing..."
 

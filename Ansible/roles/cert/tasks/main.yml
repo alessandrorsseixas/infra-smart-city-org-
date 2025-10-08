@@ -1,0 +1,29 @@
+---
+- name: Ensure cert-manager manifests applied
+  k8s:
+    state: present
+    src: https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+
+- name: Wait for cert-manager pods
+  k8s_info:
+    kind: Pod
+    namespace: cert-manager
+  register: cert_pods
+  until: cert_pods.resources | selectattr('status.phase','equalto','Running') | list | length >= 3
+  retries: 18
+  delay: 10
+  failed_when: false
+
+- name: Create TLS cert secret from local files (if present)
+  k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: tls-rancher
+        namespace: cattle-system
+      type: kubernetes.io/tls
+      data: {}
+  when: false
+  # You can extend to import local certificate files or create Issuer resources

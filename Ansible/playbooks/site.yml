@@ -1,0 +1,12 @@
+---
+- name: Provision Minikube + Rancher on local host
+  hosts: local
+  become: false
+  vars:
+    rancher_domain: "rancher.local"
+  roles:
+    - prereqs
+    - minikube
+    - ingress
+    - cert
+    - rancher

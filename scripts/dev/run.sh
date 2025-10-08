@@ -27,11 +27,14 @@ fi
 # 3. Instala/configura novo Minikube
 ./install-minikube.sh "$@"
 
-# 4. Instala, valida e configura o certificado TLS (passa o domínio como nome do certificado)
+# 4. Instala e configura o Ingress Controller
+./install-ingress.sh "$@"
+
+# 5. Instala, valida e configura o certificado TLS (passa o domínio como nome do certificado)
 DOMAIN=${1:-rancher.local}
 ./install-cert.sh "$DOMAIN" default
 
-# 5. Instala e configura o Rancher
+# 6. Instala e configura o Rancher
 ./install-rancher-minikube.sh "$DOMAIN" cattle-system
 
 echo "\nAmbiente Minikube com Rancher está pronto!\nAcesse: https://$DOMAIN"

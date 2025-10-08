@@ -1,0 +1,57 @@
+---
+- name: Ensure apt cache is up to date
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - wget
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - software-properties-common
+    state: present
+
+- name: Ensure Docker is installed
+  command: curl -fsSL https://get.docker.com | sudo bash
+  args:
+    creates: /usr/bin/docker
+  changed_when: false
+
+- name: Ensure current user is in docker group
+  user:
+    name: "{{ ansible_user_id }}"
+    groups: docker
+    append: yes
+
+- name: Ensure kubectl is installed
+  get_url:
+    url: "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
+  args:
+    creates: /usr/local/bin/kubectl
+
+- name: Ensure minikube is installed
+  get_url:
+    url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    dest: /usr/local/bin/minikube
+    mode: '0755'
+  args:
+    creates: /usr/local/bin/minikube
+
+- name: Ensure helm is installed
+  shell: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+  changed_when: false
+
+- name: Restart docker if group membership changed
+  service:
+    name: docker
+    state: restarted
+  when: false

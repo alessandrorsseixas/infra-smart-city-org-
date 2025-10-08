@@ -1,0 +1,30 @@
+---
+- name: Enable minikube ingress addon
+  command: minikube addons enable ingress
+  register: ingress_enable
+  failed_when: false
+
+- name: Wait for ingress controller pods
+  k8s_info:
+    kind: Pod
+    namespace: ingress-nginx
+    label_selectors:
+      - 'app.kubernetes.io/component=controller'
+  register: ingress_pods
+  until: ingress_pods.resources | length > 0 and ingress_pods.resources[0].status.phase == 'Running'
+  retries: 18
+  delay: 10
+  failed_when: false
+
+- name: Ensure ingress-nginx service exists
+  k8s_info:
+    kind: Service
+    namespace: ingress-nginx
+    name: ingress-nginx-controller
+  register: ingress_svc
+  failed_when: false
+
+- name: Fail if ingress controller didn't start
+  fail:
+    msg: "Ingress controller is not running after waiting. Check minikube logs."
+  when: ingress_pods.resources | length == 0
