@@ -27,6 +27,10 @@ if ! groups $USER | grep -qw docker; then
   echo "Permissões aplicadas. Continuando..."
 fi
 
+  # Verifica se o usuário está no grupo docker na sessão atual
+  if ! groups | grep -qw docker; then
+    echo "Re-execute este terminal com: newgrp docker"
+  fi
 # 4. Instala kubectl
 if ! command -v kubectl &> /dev/null; then
   echo "Instalando kubectl..."
@@ -65,3 +69,27 @@ for cmd in docker kubectl minikube helm; do
 done
 
 echo "Todos os pré-requisitos foram instalados e validados. Permissões do Docker aplicadas automaticamente."
+
+# 8. Configuração do Docker para pelo menos 2 CPUs
+DOCKER_CONFIG_FILE="/etc/docker/daemon.json"
+if command -v jq &> /dev/null; then
+  if [ -w "$DOCKER_CONFIG_FILE" ] || sudo test -w "$DOCKER_CONFIG_FILE"; then
+    if ! grep -q '"default-cpus"' "$DOCKER_CONFIG_FILE"; then
+      echo "Configurando Docker para usar pelo menos 2 CPUs..."
+      TMPFILE=$(mktemp)
+      if [ -s "$DOCKER_CONFIG_FILE" ]; then
+        sudo jq '. + {"default-cpus": 2}' "$DOCKER_CONFIG_FILE" > "$TMPFILE" && sudo mv "$TMPFILE" "$DOCKER_CONFIG_FILE"
+      else
+        echo '{"default-cpus": 2}' | sudo tee "$DOCKER_CONFIG_FILE" > /dev/null
+      fi
+      sudo systemctl restart docker
+      echo "Docker configurado para usar pelo menos 2 CPUs."
+    else
+      echo "Docker já configurado para usar pelo menos 2 CPUs."
+    fi
+  else
+    echo "Não foi possível configurar CPUs do Docker automaticamente. Configure manualmente em /etc/docker/daemon.json."
+  fi
+else
+  echo "jq não encontrado. Instale o pacote jq para configuração automática do Docker."
+fi
