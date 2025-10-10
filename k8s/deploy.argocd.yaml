@@ -1,0 +1,17 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: argocd
+  namespace: cattle-system # Namespace do Rancher, pode ser alterado conforme necessidade
+spec:
+  chart: argo/argo-cd
+  version: "8.6.0" # Exemplo de versão estável
+  targetNamespace: argocd # Namespace onde o ArgoCD será instalado
+  valuesContent: |
+    server:
+      service:
+        type: ClusterIP
+    configs:
+      params:
+        server.insecure: true
+    # Adicione outras configurações do Helm conforme necessário
